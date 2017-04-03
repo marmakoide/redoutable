@@ -3,8 +3,8 @@ import time
 import argparse 
 import random
 
+import png
 import requests
-from PIL import Image
 from requests.adapters import HTTPAdapter
 
 
@@ -43,9 +43,27 @@ def get_closest_color_from_palette(u, palette):
 
 
 
-def convert_for_palette(img, palette):
-	w, h = img.width, img.height
-	img = tuple(tuple(get_closest_color_from_palette(img.getpixel((j, i)), palette) for j in range(w)) for i in range(h))
+def decode_png_pixel_row(row, w, plane_count, alpha, palette):
+	for i in range(w):
+		pixel_data = row[plane_count * i:plane_count * (i + 1)]
+		if alpha and pixel_data[-1] != 255:
+			yield None
+		else:
+			yield get_closest_color_from_palette(tuple(pixel_data[:-1]), palette)
+
+
+
+def load_image_from_png(png_reader, palette):
+	# Load the image data
+	w, h, pixels, metadata = png_reader.read()
+
+	# Interpret the image metadata
+	plane_count, alpha = metadata['planes'], metadata['alpha']
+
+	# Decode the data
+	img = tuple(tuple(col for col in decode_png_pixel_row(row, w, plane_count, alpha, palette)) for i, row in enumerate(pixels))
+
+	# Job done	
 	return img, w, h
 
 
@@ -80,9 +98,17 @@ def read_pixel(session, x, y):
 
 
 	
-def search_pixel_to_modify(session, img, w, h, xoffset, yoffset):
+def search_non_transparent_pixel(img, w, h):
 	while True:
 		x, y = random.randint(0, w - 1), random.randint(0, h - 1)
+		if img[y][x] is not None:
+			return x, y
+
+
+
+def search_pixel_to_modify(session, img, w, h, xoffset, yoffset):
+	while True:
+		x, y = search_non_transparent_pixel(img, w, h)
 		if img[y][x] != read_pixel(session, x + xoffset, y + yoffset):
 			return x, y
 		time.sleep(5)
@@ -118,7 +144,8 @@ def main():
 	
 	# Read the input image
 	try:
-		img, w, h = convert_for_palette(Image.open(args.img_path), fixed_palette)
+		with open(args.img_path, 'r') as img_file:
+			img, w, h = load_image_from_png(png.Reader(file = img_file), fixed_palette)
 	except IOError as e:
 		sys.stderr.write('%s\n' % e)
 		sys.exit(0)
