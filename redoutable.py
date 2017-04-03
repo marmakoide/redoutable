@@ -2,6 +2,7 @@ import sys
 import time
 import argparse 
 import random
+import urllib
 
 import png
 import requests
@@ -138,18 +139,21 @@ def main():
 	                        help = 'x position of upper-left corner image')
 	cmd_parser.add_argument('-y', '--yoffset', type = int, default = 0,
 	                        help = 'y position of upper-left corner image')
-	cmd_parser.add_argument('img_path',
-	                        help = 'Path to the picture to reproduce')
+	cmd_parser.add_argument('img_url',
+	                        help = 'URL or path to the picture to reproduce')
 	args = cmd_parser.parse_args()
 	
-	# Read the input image
+	# Load the input image
 	try:
-		with open(args.img_path, 'r') as img_file:
-			img, w, h = load_image_from_png(png.Reader(file = img_file), fixed_palette)
+		img_file = urllib.urlopen(args.img_url)
+		img, w, h = load_image_from_png(png.Reader(file = img_file), fixed_palette)
 	except IOError as e:
 		sys.stderr.write('%s\n' % e)
 		sys.exit(0)
-
+	except png.FormatError as e:
+		sys.stderr.write('Unable to load {}, wrong format\n'.format(args.img_url))
+		sys.exit(0)		
+	
 	# Connect to Reddit
 	session = get_session(args.user, args.password)
 
